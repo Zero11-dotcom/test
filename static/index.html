@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZERO — Backtest &amp; Analysis</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: { extend: {
+    colors: {
+      ink:   "#050508", panel: "#0d0d14", panel2:"#111119", line:"#1e1e2a",
+      line2: "#2a2a38", mut:"#8b8b98", dim:"#5c5c6b",
+      red:   "#ef4444", red2:"#dc2626", pos:"#22c55e", neg:"#ef4444",
+      cyan:  "#22d3ee", amber:"#f59e0b",
+    },
+    fontFamily: { inter:["Inter","sans-serif"], zero:["Orbitron","sans-serif"] },
+  }}
+}
+</script>
+<style>
+  html { color-scheme: dark; }
+  body { background:#050508; font-family:Inter,sans-serif; }
+  ::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-thumb{background:#26262f;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  .glow { position:fixed; pointer-events:none; z-index:0; }
+  .glow-tr { top:-180px; right:-120px; width:640px; height:480px;
+    background:radial-gradient(ellipse at center, rgba(220,38,38,.16), transparent 65%); }
+  .glow-bl { bottom:-200px; left:-160px; width:560px; height:420px;
+    background:radial-gradient(ellipse at center, rgba(220,38,38,.08), transparent 65%); }
+  .card { background:linear-gradient(180deg,#0d0d15,#0a0a10); border:1px solid #1e1e2a; border-radius:14px; }
+  .card-h { border-bottom:1px solid #1e1e2a; }
+  /* toggle switch */
+  .tgl { appearance:none; width:42px; height:22px; border-radius:999px; background:#26262f; position:relative; cursor:pointer; transition:.2s; outline:none; flex:none; }
+  .tgl:checked { background:#dc2626; }
+  .tgl::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%; background:#9ca3af; transition:.2s; }
+  .tgl:checked::after { left:23px; background:#fff; }
+  /* radio */
+  .rdo { appearance:none; width:16px; height:16px; border-radius:50%; border:2px solid #3a3a48; background:transparent; cursor:pointer; flex:none; transition:.15s; }
+  .rdo:checked { border-color:#ef4444; background:radial-gradient(circle, #ef4444 0 40%, transparent 45%); }
+  /* number input arrows */
+  input[type=number]::-webkit-inner-spin-button { opacity:.35; }
+  select, input[type=number] { background:#0a0a11; border:1px solid #26262f; color:#e5e7eb; border-radius:10px; outline:none; }
+  select:focus, input[type=number]:focus { border-color:#dc2626; }
+  .nav-active { background:#dc2626; color:#fff; }
+  .kpi-icon { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex:none; }
+  .viewbtn { border:1px solid #26262f; color:#8b8b98; border-radius:10px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; transition:.15s; white-space:nowrap; }
+  .viewbtn:hover { color:#e5e7eb; border-color:#3a3a48; }
+  .viewbtn.active { background:rgba(220,38,38,.14); border-color:#ef4444; color:#f87171; }
+  .seg { border:1px solid #26262f; border-radius:9px; padding:5px 14px; font-size:12px; font-weight:600; color:#8b8b98; cursor:pointer; }
+  .seg.active { background:#dc2626; color:#fff; border-color:#dc2626; }
+  .hm-cell { aspect-ratio:1.35; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:600; border:1px solid #16161f; }
+  .spin { width:16px; height:16px; border:2px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg) } }
+  .toast { position:fixed; bottom:24px; right:24px; z-index:60; padding:12px 18px; border-radius:12px;
+    font-size:13px; font-weight:600; box-shadow:0 8px 30px rgba(0,0,0,.5); opacity:0; transform:translateY(8px); transition:.25s; pointer-events:none; }
+  .toast.show { opacity:1; transform:translateY(0); }
+  .tooltip { position:relative; cursor:help; }
+  .tooltip .tip { visibility:hidden; position:absolute; bottom:130%; left:50%; transform:translateX(-50%);
+    width:230px; background:#15151f; border:1px solid #2a2a38; color:#c7c9d1; font-size:11px; line-height:1.5;
+    padding:8px 10px; border-radius:8px; z-index:50; font-weight:400; }
+  .tooltip:hover .tip { visibility:visible; }
+</style>
+</head>
+<body class="text-gray-200 font-inter min-h-screen">
+<div class="glow glow-tr"></div><div class="glow glow-bl"></div>
+
+<!-- ═══════════════ TOP NAV ═══════════════ -->
+<header class="relative z-20 border-b border-line bg-[#07070c]/90 backdrop-blur">
+  <div class="flex items-center gap-6 px-6 h-[64px]">
+    <div class="flex items-baseline gap-2">
+      <span class="font-zero font-black text-[26px] tracking-[0.28em] text-white">ZER<span class="text-red">O</span></span>
+      <span class="hidden xl:block text-[9px] tracking-[0.3em] text-dim font-semibold mt-1">SYSTEMS COMPOUND FREEDOM</span>
+    </div>
+    <nav class="flex items-center gap-1 ml-6 text-[13px] font-semibold">
+      <a href="#" class="nav-active px-4 py-2 rounded-lg">Backtest</a>
+      <a href="#" class="px-4 py-2 rounded-lg text-mut hover:text-gray-200 transition">Results</a>
+      <a href="#" class="px-4 py-2 rounded-lg text-mut hover:text-gray-200 transition">Trade Log</a>
+      <a href="#" class="px-4 py-2 rounded-lg text-mut hover:text-gray-200 transition">Methodology</a>
+      <a href="#" class="px-4 py-2 rounded-lg text-mut hover:text-gray-200 transition">About</a>
+    </nav>
+    <div class="hidden 2xl:block ml-auto italic text-[13px] text-mut leading-snug text-right">
+      “Discipline compounds what<br>motivation cannot.”
+    </div>
+    <div class="ml-auto 2xl:ml-6 flex items-center gap-4">
+      <button id="btn-theme" class="text-mut hover:text-gray-200 text-lg transition" title="Theme">☾</button>
+      <button class="border border-red/70 text-red font-bold text-[13px] px-5 py-2 rounded-lg hover:bg-red hover:text-white transition">
+        Build. Test. Compound.
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="relative z-10 flex gap-5 p-5">
+
+  <!-- ═══════════════ SIDEBAR ═══════════════ -->
+  <aside class="w-[310px] flex-none space-y-4">
+    <div>
+      <h1 class="text-[22px] font-800 font-extrabold text-white leading-tight">Backtest <span class="text-red">Configuration</span></h1>
+      <p class="text-[12px] text-mut mt-1">Set your parameters and compile the analysis.</p>
+    </div>
+
+    <div class="card p-4 space-y-4">
+      <!-- 1. capital -->
+      <div>
+        <div class="flex items-center gap-2.5 mb-2">
+          <span class="kpi-icon bg-panel2 border border-line text-red text-[15px]">$</span>
+          <div><div class="text-[13.5px] font-bold text-white">1. Initial Capital</div>
+          <div class="text-[11px] text-mut">Enter your starting capital in USD</div></div>
+        </div>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-dim text-sm">$</span>
+          <input id="capital" type="number" value="100000" min="100" step="100"
+            class="w-full pl-8 pr-3 py-2.5 text-sm font-semibold">
+        </div>
+      </div>
+
+      <!-- 2. variation -->
+      <div class="pt-1">
+        <div class="flex items-center gap-2.5 mb-2">
+          <span class="kpi-icon bg-panel2 border border-line text-red text-[15px]">⑂</span>
+          <div><div class="text-[13.5px] font-bold text-white">2. Strategy Variation</div>
+          <div class="text-[11px] text-mut">Select one variation (1 – 14)</div></div>
+        </div>
+        <select id="variation" class="w-full px-3 py-2.5 text-sm font-semibold"></select>
+      </div>
+
+      <!-- 3. mode -->
+      <div class="pt-1">
+        <div class="flex items-center gap-2.5 mb-2.5">
+          <span class="kpi-icon bg-panel2 border border-line text-red text-[15px]">▥</span>
+          <div class="text-[13.5px] font-bold text-white">3. Mode Selection</div>
+          <span class="tooltip ml-auto text-dim text-[12px] border border-line2 rounded-full w-4 h-4 flex items-center justify-center">?
+            <span class="tip">“Only Profitable” runs the same strategy restricted to hours &amp; weekdays that were historically profitable.</span>
+          </span>
+        </div>
+        <label class="flex items-center gap-2.5 py-1.5 cursor-pointer">
+          <input type="radio" name="mode" value="general" class="rdo" checked>
+          <span class="text-[12.5px] font-medium">General Mode</span>
+        </label>
+        <label class="flex items-center gap-2.5 py-1.5 cursor-pointer">
+          <input type="radio" name="mode" value="profitable" class="rdo">
+          <span class="text-[12.5px] font-medium">Only Profitable Hour + Profitable Weekday</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card p-4 space-y-5">
+      <div class="flex items-center gap-2.5">
+        <span class="kpi-icon bg-panel2 border border-line text-red text-[15px]">⚙</span>
+        <div class="text-[13.5px] font-bold text-white">4. Extra Variation Parameters</div>
+      </div>
+
+      <!-- position distribution -->
+      <div>
+        <div class="flex items-center justify-between">
+          <span class="text-[12.5px] font-bold text-white">Position Distribution (Exness 200 Lot Limit)</span>
+          <input id="posdist" type="checkbox" class="tgl" checked>
+        </div>
+        <p class="text-[11px] text-mut mt-1.5 leading-relaxed">If required lots exceed 200, split into multiple positions (e.g. 300 lots = 200 + 100) with same entry &amp; exit times.</p>
+      </div>
+
+      <!-- MA filter -->
+      <div class="border-t border-line pt-4">
+        <div class="flex items-center justify-between">
+          <span class="text-[12.5px] font-bold text-white">P&amp;L X Moving Average Variation Filter</span>
+          <input id="mafilter" type="checkbox" class="tgl">
+        </div>
+        <div id="ma-block" class="mt-3 space-y-3 opacity-40 pointer-events-none transition">
+          <div>
+            <div class="text-[11.5px] font-semibold text-mut mb-1.5">X Value (Moving Average Multiplier)</div>
+            <input id="maperiod" type="number" value="50" min="2" step="1" class="w-full px-3 py-2 text-sm font-semibold">
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5 mb-1.5">
+              <span class="text-[11.5px] font-semibold text-mut">MA Signal Condition</span>
+              <span class="tooltip text-dim text-[11px] border border-line2 rounded-full w-4 h-4 flex items-center justify-center">?
+                <span class="tip">Touching MA: equity touches or dips to the MA line → go virtual.<br><br>Close Below MA: only a close strictly below the MA triggers virtual mode.</span>
+              </span>
+            </div>
+            <select id="macond" class="w-full px-3 py-2 text-sm font-semibold">
+              <option value="touch">Touching MA</option>
+              <option value="close_below">Close Below MA</option>
+            </select>
+          </div>
+          <p class="text-[11px] text-mut leading-relaxed">When Net P&amp;L touches the X MA, switch to Virtual Mode. Resume live trading when Net P&amp;L closes above X MA.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="flex items-center gap-2.5 mb-3">
+        <span class="kpi-icon bg-panel2 border border-line text-red text-[15px]">▦</span>
+        <div class="text-[13.5px] font-bold text-white">Chart Display Settings</div>
+      </div>
+      <div class="text-[11.5px] font-semibold text-mut mb-2">Y-Axis Display</div>
+      <label class="flex items-center gap-2.5 py-1.5 cursor-pointer">
+        <input type="radio" name="yaxis" value="usd" class="rdo" checked>
+        <span class="text-[12.5px] font-medium">Equity in USD</span>
+      </label>
+      <label class="flex items-center gap-2.5 py-1.5 cursor-pointer">
+        <input type="radio" name="yaxis" value="pct" class="rdo">
+        <span class="text-[12.5px] font-medium">Equity as Instrument %</span>
+      </label>
+    </div>
+
+    <button id="btn-compile" class="w-full bg-gradient-to-b from-red to-red2 text-white font-bold text-[15px] py-3.5 rounded-xl border border-red/60 shadow-[0_0_24px_rgba(220,38,38,.35)] hover:brightness-110 transition flex items-center justify-center gap-2">
+      <span id="compile-ic">▷</span><span id="compile-tx">Compile</span>
+    </button>
+    <button id="btn-reset" class="w-full border border-line2 text-mut hover:text-gray-200 font-semibold text-[13px] py-2.5 rounded-xl transition">↺ Reset All</button>
+  </aside>
+
+  <!-- ═══════════════ MAIN ═══════════════ -->
+  <main class="flex-1 min-w-0 space-y-5">
+
+    <!-- KPI strip -->
+    <section class="card">
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 divide-x divide-line">
+        <div class="p-4 flex gap-3"><span class="kpi-icon bg-panel2 border border-line text-cyan"> USD </span>
+          <div><div class="text-[11px] text-mut font-semibold">Net P&amp;L</div>
+          <div id="k-net" class="text-[19px] font-extrabold text-pos">—</div>
+          <div id="k-net-pct" class="text-[11px] text-mut">—</div></div></div>
+        <div class="p-4 flex gap-3"><span class="kpi-icon bg-panel2 border border-line text-cyan">☰</span>
+          <div><div class="text-[11px] text-mut font-semibold">Total Trades</div>
+          <div id="k-trades" class="text-[19px] font-extrabold text-white">—</div>
+          <div id="k-trades-sub" class="text-[11px] text-mut">—</div></div></div>
+        <div class="p-4 flex gap-3"><span class="kpi-icon bg-panel2 border border-line text-pos">✓</span>
+          <div><div class="text-[11px] text-mut font-semibold">Win Rate</div>
+          <div id="k-winrate" class="text-[19px] font-extrabold text-white">—</div>
+          <div id="k-winrate-sub" class="text-[11px] text-mut">—</div></div></div>
+        <div class="p-4 flex gap-3"><span class="kpi-icon bg-panel2 border border-line text-red">↓</span>
+          <div><div class="text-[11px] text-mut font-semibold">Max DD (Monthly)</div>
+          <div id="k-ddm" class="text-[19px] font-extrabold text-red">—</div>
+          <div id="k-ddm-sub" class="text-[11px] text-mut">—</div></div></div>
+        <div class="p-4 flex gap-3"><span class="kpi-icon bg-panel2 border border-line text-red">▦</span>
+          <div><div class="text-[11px] text-mut font-semibold">Max DD (Yearly)</div>
+          <div id="k-ddy" class="text-[19px] font-extrabold text-red">—</div>
+          <div id="k-ddy-sub" class="text-[11px] text-mut">—</div></div></div>
+        <div class="p-4 flex gap-3"><span class="kpi-icon bg-panel2 border border-line text-amber">↻</span>
+          <div><div class="text-[11px] text-mut font-semibold">Mode Switches</div>
+          <div id="k-switches" class="text-[19px] font-extrabold text-white">—</div>
+          <div class="text-[11px] text-mut">live ↔ virtual</div></div></div>
+      </div>
+      <div class="card-h border-t border-line px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-mut">
+        <span>Initial Capital: <b id="cfg-capital" class="text-gray-300">—</b></span><span class="text-line2">|</span>
+        <span>Variation: <b id="cfg-var" class="text-gray-300">—</b></span><span class="text-line2">|</span>
+        <span>Mode: <b id="cfg-mode" class="text-gray-300">—</b></span><span class="text-line2">|</span>
+        <span>Position Distribution: <b id="cfg-pos" class="text-gray-300">—</b></span><span class="text-line2">|</span>
+        <span>X MA: <b id="cfg-ma" class="text-gray-300">—</b></span><span class="text-line2">|</span>
+        <span>Signal: <b id="cfg-signal" class="text-gray-300">—</b></span>
+      </div>
+    </section>
+
+    <!-- Equity curve -->
+    <section class="card">
+      <div class="flex flex-wrap items-center gap-3 px-5 pt-4 pb-3">
+        <span class="kpi-icon bg-panel2 border border-line text-cyan text-[14px]">📈</span>
+        <h2 class="text-[16px] font-bold text-white">Equity Curve</h2>
+        <div class="ml-auto flex items-center gap-2 flex-wrap">
+          <span class="text-[11.5px] text-mut font-semibold">Select Chart View:</span>
+          <button class="viewbtn active" data-view="original">1&nbsp; Original</button>
+          <button class="viewbtn" data-view="ma">2&nbsp; With X MA</button>
+          <button class="viewbtn" data-view="real">3&nbsp; Real Only</button>
+          <select id="yaxis-quick" class="ml-2 px-3 py-2 text-[12px] font-semibold">
+            <option value="usd">Y-Axis: Equity in USD</option>
+            <option value="pct">Y-Axis: Equity as Instrument %</option>
+          </select>
+        </div>
+      </div>
+      <div id="equity-legend" class="flex flex-wrap items-center gap-5 px-6 pb-1 text-[11.5px] font-semibold"></div>
+      <div class="px-3 pb-4"><div class="h-[380px]"><canvas id="ch-equity"></canvas></div></div>
+    </section>
+
+    <!-- Heatmap + performance + key metrics -->
+    <section class="grid grid-cols-1 xl:grid-cols-12 gap-5">
+      <!-- heatmap -->
+      <div class="card xl:col-span-5">
+        <div class="card-h flex items-center gap-2.5 px-5 py-3.5">
+          <span class="kpi-icon bg-panel2 border border-line text-cyan text-[13px]">🗓</span>
+          <h2 class="text-[14.5px] font-bold text-white">Monthly P&amp;L Calendar <span id="hm-unit" class="text-mut font-semibold">(USD)</span></h2>
+        </div>
+        <div class="p-4">
+          <div class="grid gap-1 mb-1.5" style="grid-template-columns:46px repeat(12,1fr) 66px" id="hm-head"></div>
+          <div id="hm-body" class="space-y-1"></div>
+          <div class="flex items-center gap-4 mt-3.5 text-[10.5px] text-mut font-semibold">
+            <span class="flex items-center gap-1.5"><i class="w-5 h-2.5 rounded-sm" style="background:linear-gradient(90deg,rgba(34,197,94,.15),rgba(34,197,94,.9))"></i>Profit</span>
+            <span class="flex items-center gap-1.5"><i class="w-5 h-2.5 rounded-sm" style="background:linear-gradient(90deg,rgba(239,68,68,.15),rgba(239,68,68,.9))"></i>Loss</span>
+            <span class="flex items-center gap-1.5"><i class="w-5 h-2.5 rounded-sm bg-[#14141d] border border-line"></i>Flat / Out of range</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- monthly + yearly perf -->
+      <div class="card xl:col-span-4 flex flex-col">
+        <div class="card-h flex items-center gap-2.5 px-5 py-3.5">
+          <span class="kpi-icon bg-panel2 border border-line text-cyan text-[13px]">📊</span>
+          <h2 class="text-[14.5px] font-bold text-white">Monthly Performance <span id="mp-unit" class="text-mut font-semibold">(USD)</span></h2>
+          <select id="mp-year" class="ml-auto px-2.5 py-1.5 text-[12px] font-semibold"></select>
+        </div>
+        <div class="p-3 flex-1 min-h-[190px]"><canvas id="ch-monthly"></canvas></div>
+        <div class="card-h border-t border-line flex items-center gap-2.5 px-5 py-3.5">
+          <span class="kpi-icon bg-panel2 border border-line text-cyan text-[13px]">📈</span>
+          <h2 class="text-[14.5px] font-bold text-white">Yearly Performance <span id="yp-unit" class="text-mut font-semibold">(USD)</span></h2>
+        </div>
+        <div class="p-3 flex-1 min-h-[190px]"><canvas id="ch-yearly"></canvas></div>
+      </div>
+
+      <!-- key metrics -->
+      <div class="card xl:col-span-3">
+        <div class="card-h flex items-center gap-2.5 px-5 py-3.5">
+          <span class="kpi-icon bg-panel2 border border-line text-amber text-[13px]">◫</span>
+          <h2 class="text-[14.5px] font-bold text-white">Key Metrics</h2>
+          <div class="ml-auto flex gap-1.5">
+            <button class="seg active" data-km="usd">USD</button>
+            <button class="seg" data-km="pct">Instrument %</button>
+          </div>
+        </div>
+        <div class="p-4 text-[12.5px]" id="km-body"></div>
+      </div>
+    </section>
+
+    <!-- download -->
+    <section class="card">
+      <div class="card-h flex items-center gap-3 px-5 py-3.5">
+        <span class="kpi-icon bg-panel2 border border-line text-cyan text-[14px]">🗎</span>
+        <div>
+          <h2 class="text-[15px] font-bold text-white">Download Report</h2>
+          <p class="text-[11.5px] text-mut">Download complete backtest results with trades, equity data, performance metrics and charts.</p>
+        </div>
+      </div>
+      <div class="p-5 flex flex-wrap items-center gap-4">
+        <button id="btn-xlsx" class="flex items-center gap-2.5 bg-[#0f2418] border border-pos/40 text-pos font-bold text-[13px] px-5 py-3 rounded-xl hover:bg-[#14421f] transition">
+          <span class="text-[16px]">⊞</span> Download Excel (.xlsx)
+        </button>
+        <button id="btn-pdf" class="flex items-center gap-2.5 bg-[#2a1113] border border-red/50 text-red font-bold text-[13px] px-5 py-3 rounded-xl hover:bg-[#43151a] transition">
+          <span class="text-[16px]">⇩</span> Download PDF Report
+        </button>
+        <div class="ml-auto text-[11px] text-mut leading-relaxed hidden md:block">
+          <b class="text-gray-300">Report includes:</b> trade-by-trade data (Live/Virtual) · equity curves ·
+          monthly &amp; yearly P&amp;L · drawdowns · mode switches · all parameters &amp; settings
+        </div>
+      </div>
+    </section>
+
+    <footer class="flex items-center justify-between text-[10.5px] text-dim pb-2 px-1">
+      <span><span class="font-zero tracking-[0.25em] text-mut">ZER<span class="text-red">O</span></span>&nbsp;&nbsp;SYSTEMATIC TRADING. REAL RESULTS.</span>
+      <span>Past Performance ≠ Future Results &nbsp;|&nbsp; Trade Responsibly</span>
+    </footer>
+  </main>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+/* ═══════════════════ state & helpers ═══════════════════ */
+const $ = id => document.getElementById(id);
+let DATA = null;                 // last /api/analyze response
+let chartView = "original";
+let kmUnit = "usd";
+let chEquity, chMonthly, chYearly;
+
+const fmtUSD = (v, sign=false) => {
+  if (v == null || isNaN(v)) return "—";
+  const s = Math.abs(v).toLocaleString("en-US", {maximumFractionDigits:0});
+  return (v < 0 ? "-$" : (sign && v > 0 ? "+$" : "$")) + s;
+};
+const fmtPct = (v, sign=false) => {
+  if (v == null || isNaN(v)) return "—";
+  return (v > 0 && sign ? "+" : "") + v.toLocaleString("en-US", {maximumFractionDigits:2}) + "%";
+};
+const toast = (msg, ok=true) => {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (ok ? "bg-[#0f2418] border border-pos/50 text-pos" : "bg-[#2a1113] border border-red/50 text-red");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3800);
+};
+
+/* ═══════════════════ boot: load variations ═══════════════════ */
+(async () => {
+  const res = await fetch("/api/variations");
+  const j = await res.json();
+  const sel = $("variation");
+  let group = null, og = null;
+  for (const v of j.variations) {
+    if (v.group !== group) { group = v.group; og = document.createElement("optgroup"); og.label = group; sel.appendChild(og); }
+    const o = document.createElement("option");
+    o.value = v.id; o.textContent = v.label;
+    og.appendChild(o);
+  }
+})();
+
+/* ═══════════════════ compile ═══════════════════ */
+function readParams() {
+  return {
+    capital: parseFloat($("capital").value) || 100000,
+    variation: $("variation").value,
+    mode: document.querySelector('input[name=mode]:checked').value,
+    position_distribution: $("posdist").checked,
+    ma_filter: $("mafilter").checked,
+    ma_period: parseInt($("maperiod").value) || 50,
+    ma_condition: $("macond").value,
+  };
+}
+
+let compileSeq = 0;
+async function compile() {
+  const btn = $("btn-compile");
+  btn.disabled = true;
+  $("compile-ic").outerHTML = '<span id="compile-ic" class="spin"></span>';
+  $("compile-tx").textContent = "Compiling…";
+  const seq = ++compileSeq;
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(readParams()),
+    });
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || "Analysis failed");
+    if (seq === compileSeq) {          // drop stale responses
+      DATA = j;
+      renderAll();
+      toast("Analysis compiled — " + j.meta.source_file);
+    }
+  } catch (e) {
+    if (seq === compileSeq) toast(e.message, false);
+  } finally {
+    if (seq === compileSeq) {
+      btn.disabled = false;
+      const ic = $("compile-ic"); if (ic) ic.outerHTML = '<span id="compile-ic">▷</span>';
+      $("compile-tx").textContent = "Compile";
+    }
+  }
+}
+
+$("btn-compile").addEventListener("click", compile);
+$("btn-reset").addEventListener("click", () => {
+  $("capital").value = 100000; $("variation").selectedIndex = 0;
+  document.querySelector('input[name=mode][value=general]').checked = true;
+  $("posdist").checked = true; $("mafilter").checked = false;
+  $("maperiod").value = 50; $("macond").value = "touch";
+  syncMaBlock(); DATA = null; renderAll();
+  toast("Parameters reset", true);
+});
+$("mafilter").addEventListener("change", syncMaBlock);
+function syncMaBlock() {
+  const on = $("mafilter").checked;
+  $("ma-block").classList.toggle("opacity-40", !on);
+  $("ma-block").classList.toggle("pointer-events-none", !on);
+}
+/* debounced auto-recompile on parameter change (coalesces rapid edits) */
+let compileTimer = null;
+function scheduleCompile() {
+  clearTimeout(compileTimer);
+  compileTimer = setTimeout(() => { if (DATA) compile(); }, 250);
+}
+["capital","variation","maperiod","macond"].forEach(id =>
+  $(id).addEventListener("change", scheduleCompile));
+["posdist","mafilter"].forEach(id =>
+  $(id).addEventListener("change", scheduleCompile));
+
+/* y-axis sync (sidebar radios + quick select) */
+document.querySelectorAll('input[name=yaxis]').forEach(r =>
+  r.addEventListener("change", () => { $("yaxis-quick").value = r.value; renderAll(); }));
+$("yaxis-quick").addEventListener("change", e => {
+  document.querySelector(`input[name=yaxis][value=${e.target.value}]`).checked = true;
+  renderAll();
+});
+const yaxisMode = () => document.querySelector('input[name=yaxis]:checked').value;
+
+/* chart views */
+document.querySelectorAll(".viewbtn").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".viewbtn").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  chartView = b.dataset.view;
+  if (DATA) renderEquity();
+}));
+
+/* key metrics unit toggle */
+document.querySelectorAll(".seg[data-km]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".seg[data-km]").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  kmUnit = b.dataset.km;
+  if (DATA) renderKeyMetrics();
+}));
+
+/* heatmap + monthly year selector */
+$("mp-year").addEventListener("change", () => { if (DATA) { renderMonthlyPerf(); renderHeatmap(); } });
+
+/* downloads */
+async function download(url) {
+  if (!DATA) { toast("Compile the analysis first", false); return; }
+  toast("Building report…");
+  try {
+    const res = await fetch(url, { method:"POST", headers:{"Content-Type":"application/json"},
+                                   body: JSON.stringify(readParams()) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || "Export failed"); }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = res.headers.get("Content-Disposition")?.split('filename="')[1]?.slice(0,-1) || "report";
+    a.click(); URL.revokeObjectURL(a.href);
+    toast("Report downloaded");
+  } catch (e) { toast(e.message, false); }
+}
+$("btn-xlsx").addEventListener("click", () => download("/api/export/xlsx"));
+$("btn-pdf").addEventListener("click", () => download("/api/export/pdf"));
+
+/* ═══════════════════ rendering ═══════════════════ */
+function renderAll() {
+  if (!DATA) { renderEmpty(); return; }
+  renderKPIs(); renderConfigStrip(); renderEquity();
+  renderHeatmap(); renderMonthlyPerf(); renderYearlyPerf(); renderKeyMetrics();
+}
+
+function renderEmpty() {
+  ["k-net","k-trades","k-winrate","k-ddm","k-ddy","k-switches"].forEach(id => $(id).textContent = "—");
+}
+
+function renderKPIs() {
+  const k = DATA.kpis, c = DATA.params.capital;
+  $("k-net").textContent = fmtUSD(k.net_pnl, true);
+  $("k-net").className = "text-[19px] font-extrabold " + (k.net_pnl >= 0 ? "text-pos" : "text-neg");
+  $("k-net-pct").textContent = fmtPct(k.net_pnl_pct, true) + " on initial capital";
+  $("k-trades").textContent = k.total_trades.toLocaleString();
+  $("k-trades-sub").textContent = k.live_trades.toLocaleString() + " live · " + k.virtual_trades.toLocaleString() + " virtual";
+  $("k-winrate").textContent = k.win_rate + "%";
+  $("k-winrate-sub").textContent = k.wins + " W / " + k.losses + " L · PF " + (k.profit_factor ?? "—");
+  $("k-ddm").textContent = fmtUSD(k.max_dd_monthly.abs);
+  $("k-ddm-sub").textContent = fmtPct(k.max_dd_monthly.pct) + " · " + (k.max_dd_monthly.period || "—");
+  $("k-ddy").textContent = fmtUSD(k.max_dd_yearly.abs);
+  $("k-ddy-sub").textContent = fmtPct(k.max_dd_yearly.pct) + " · " + (k.max_dd_yearly.period || "—");
+  $("k-switches").textContent = k.mode_switches;
+}
+
+function renderConfigStrip() {
+  const p = DATA.params, k = DATA.kpis;
+  $("cfg-capital").textContent = fmtUSD(p.capital);
+  $("cfg-var").textContent = p.variation_label.split("·")[0].trim();
+  $("cfg-mode").textContent = p.mode === "general" ? "General" : "Only Profitable";
+  $("cfg-pos").textContent = p.position_distribution ? "ON" : "OFF";
+  $("cfg-ma").textContent = p.ma_filter ? p.ma_period : "—";
+  $("cfg-signal").textContent = p.ma_filter ? (p.ma_condition === "touch" ? "Touching MA" : "Close Below MA") : "—";
+}
+
+const GRID = "#1e1e2a", TICK = "#8b8b98";
+
+function scaleVal(v) {
+  if (v == null) return null;
+  return yaxisMode() === "pct" ? (v / DATA.params.capital) * 100 : v;
+}
+const yLabel = () => yaxisMode() === "pct" ? "Equity (% of initial capital)" : "Equity (USD)";
+
+function renderEquity() {
+  const s = DATA.series, p = DATA.params;
+  const labels = s.labels;
+  const conv = arr => arr.map(scaleVal);
+  const datasets = [];
+  const base = { borderWidth: 1.6, pointRadius: 0, pointHoverRadius: 3, tension: 0.15 };
+
+  if (chartView === "original") {
+    datasets.push({ ...base, label: "Net P&L (Equity)", data: conv(s.original), borderColor: "#22d3ee" });
+    $("equity-legend").innerHTML = legendItem("#22d3ee", "Net P&L (Equity)");
+  } else if (chartView === "ma") {
+    if (!p.ma_filter) {
+      datasets.push({ ...base, label: "Net P&L (Equity)", data: conv(s.original), borderColor: "#22d3ee" });
+      $("equity-legend").innerHTML = legendItem("#22d3ee", "Net P&L (Equity)") +
+        '<span class="text-dim">MA filter is OFF — enable it in the sidebar to see virtual mode.</span>';
+    } else {
+      const { live, virt } = splitByMode(s.original, s.live_flags);
+      datasets.push({ ...base, label: "Net P&L (Live)", data: conv(live), borderColor: "#38bdf8", segment: {} });
+      datasets.push({ ...base, label: "Net P&L (Virtual)", data: conv(virt), borderColor: "#f87171",
+                      borderDash: [5, 3] });
+      datasets.push({ ...base, label: `X MA (${p.ma_period})`, data: conv(s.original_ma),
+                      borderColor: "#f59e0b", borderWidth: 1.8 });
+      $("equity-legend").innerHTML =
+        legendItem("#38bdf8", "Net P&L (Live)") + legendItem("#f87171", "Net P&L (Virtual)", true) +
+        legendItem("#f59e0b", `X MA (${p.ma_period})`);
+    }
+  } else {
+    datasets.push({ ...base, label: "Real Only (live trades stitched)", data: conv(s.real_values),
+                    borderColor: "#22c55e", borderWidth: 1.8 });
+    $("equity-legend").innerHTML = legendItem("#22c55e", "Real Only (virtual excluded, stitched)");
+  }
+
+  const cfg = {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 350 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: "#15151f", borderColor: "#2a2a38", borderWidth: 1,
+          titleFont: {size: 11}, bodyFont: {size: 11}, padding: 10,
+          callbacks: {
+            label: c => (c.dataset.label + ": " +
+              (yaxisMode() === "pct" ? fmtPct(c.parsed.y, true) : fmtUSD(c.parsed.y, true))),
+          }},
+      },
+      scales: {
+        x: { grid: { color: GRID, drawTicks: false }, ticks: {
+              color: TICK, font: {size: 10}, maxTicksLimit: 12, maxRotation: 45 } },
+        y: { grid: { color: GRID }, ticks: {
+              color: TICK, font: {size: 10},
+              callback: v => yaxisMode() === "pct" ? v.toLocaleString() + "%" : v.toLocaleString() },
+             title: { display: true, text: yLabel(), color: TICK, font: {size: 10} } },
+      },
+    },
+  };
+  if (chEquity) chEquity.destroy();
+  chEquity = new Chart($("ch-equity"), cfg);
+}
+
+function legendItem(color, label, dashed=false) {
+  return `<span class="flex items-center gap-1.5 text-mut">
+    <i style="width:18px;height:0;border-top:3px ${dashed ? "dashed" : "solid"} ${color}"></i>${label}</span>`;
+}
+
+/* split a series into live/virtual arrays (null outside mode, boundary join) */
+function splitByMode(values, flags) {
+  const live = new Array(values.length).fill(null);
+  const virt = new Array(values.length).fill(null);
+  for (let i = 0; i < values.length; i++) {
+    (flags[i] === "live" ? live : virt)[i] = values[i];
+  }
+  for (let i = 1; i < values.length; i++) {
+    if (flags[i] !== flags[i-1]) { live[i] = values[i]; virt[i] = values[i]; }
+  }
+  return { live, virt };
+}
+
+/* heatmap */
+function renderHeatmap() {
+  const hm = DATA.heatmap, usd = yaxisMode() === "usd";
+  $("hm-unit").textContent = usd ? "(USD)" : "(Instrument %)";
+  const cap = DATA.params.capital;
+  const maxAbs = hm.max_abs || 1;
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  $("hm-head").innerHTML = '<div></div>' + M.map(m =>
+    `<div class="text-center text-[10px] text-mut font-semibold">${m}</div>`).join("") +
+    '<div class="text-center text-[10px] text-dim font-bold">YEAR</div>';
+  let html = "";
+  for (const y of hm.years) {
+    const tPct = y.total / cap * 100;
+    html += `<div class="grid gap-1 items-center" style="grid-template-columns:46px repeat(12,1fr) 66px">
+      <div class="text-[11px] font-bold text-gray-300">${y.year}</div>`;
+    for (const c of y.months) {
+      let bg, fg, txt;
+      if (c.state === "out") { bg = "#0c0c13"; fg = "#3a3a48"; txt = "·"; }
+      else {
+        const v = c.pnl;
+        if (Math.abs(v) < 0.005) { bg = "#14141d"; fg = "#5c5c6b"; txt = "0"; }
+        else {
+          const a = 0.16 + 0.74 * Math.min(1, Math.abs(v) / maxAbs);
+          bg = (v > 0 ? `rgba(34,197,94,${a})` : `rgba(239,68,68,${a})`);
+          fg = a > 0.66 ? "#050508" : "#d7d7de";
+          const disp = usd ? v : v / cap * 100;
+          txt = Math.abs(disp) >= 1000 ? (disp/1000).toFixed(0) + "k" : disp.toFixed(Math.abs(disp) < 10 ? 1 : 0);
+        }
+      }
+      html += `<div class="hm-cell" style="background:${bg};color:${fg}"
+        title="${y.year}-${String(c.month).padStart(2,"0")}: ${usd ? fmtUSD(c.pnl, true) : fmtPct(c.pnl / cap * 100, true)}">${txt}</div>`;
+    }
+    const total = usd ? y.total : tPct;
+    html += `<div class="text-[11px] font-bold text-right pr-1 ${y.total >= 0 ? "text-pos" : "text-neg"}"
+      title="Year total: ${fmtUSD(y.total, true)} (${fmtPct(tPct, true)})">${
+      Math.abs(total) >= 1000 ? (total/1000).toFixed(1) + "k" : total.toFixed(0)}</div></div>`;
+  }
+  $("hm-body").innerHTML = html;
+}
+
+/* monthly performance bars */
+function renderMonthlyPerf() {
+  const usd = yaxisMode() === "usd", cap = DATA.params.capital;
+  $("mp-unit").textContent = usd ? "(USD)" : "(Instrument %)";
+  const sel = $("mp-year");
+  if (sel.options.length !== DATA.heatmap.years.length) {
+    sel.innerHTML = DATA.heatmap.years.map(y => `<option>${y.year}</option>`).join("");
+  }
+  sel.value = sel.options[sel.options.length - 1].value;
+  const yr = DATA.heatmap.years.find(y => y.year === parseInt(sel.value));
+  const vals = yr.months.map(c => usd ? c.pnl : c.pnl / cap * 100);
+  showBars($("ch-monthly"), vals, ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], usd);
+}
+
+function renderYearlyPerf() {
+  const usd = yaxisMode() === "usd", cap = DATA.params.capital;
+  $("yp-unit").textContent = usd ? "(USD)" : "(Instrument %)";
+  const vals = DATA.heatmap.years.map(y => usd ? y.total : y.total / cap * 100);
+  showBars($("ch-yearly"), vals, DATA.heatmap.years.map(y => y.year), usd);
+}
+
+function showBars(canvas, vals, labels, usd) {
+  const cfg = {
+    type: "bar",
+    data: { labels, datasets: [{ data: vals,
+      backgroundColor: vals.map(v => v >= 0 ? "rgba(34,197,94,.8)" : "rgba(239,68,68,.8)"),
+      borderRadius: 3, barPercentage: 0.72 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      plugins: { legend: { display: false },
+        tooltip: { backgroundColor: "#15151f", borderColor: "#2a2a38", borderWidth: 1,
+          callbacks: { label: c => usd ? fmtUSD(c.parsed.y, true) : fmtPct(c.parsed.y, true) } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: TICK, font: {size: 9.5} } },
+        y: { grid: { color: GRID }, ticks: { color: TICK, font: {size: 9.5}, maxTicksLimit: 6 } },
+      },
+    },
+  };
+  const existing = canvas.__chart;
+  if (existing) existing.destroy();
+  canvas.__chart = new Chart(canvas, cfg);
+}
+
+/* key metrics table */
+function renderKeyMetrics() {
+  const k = DATA.kpis, p = DATA.params, cap = p.capital;
+  const rows = [
+    ["Net P&L", fmtUSD(k.net_pnl, true), fmtPct(k.net_pnl_pct, true)],
+    ["Final Equity", fmtUSD(k.final_equity), "—"],
+    ["Total Trades", k.total_trades.toLocaleString(), "—"],
+    ["&nbsp;&nbsp;· Live / Virtual", k.live_trades + " / " + k.virtual_trades, "—"],
+    ["Win Rate", k.win_rate + "%", "—"],
+    ["Max DD (Monthly)", fmtUSD(k.max_dd_monthly.abs), fmtPct(k.max_dd_monthly.pct)],
+    ["&nbsp;&nbsp;· Period", (k.max_dd_monthly.period || "—") + "<br><span class='text-dim text-[10.5px]'>" +
+      (k.max_dd_monthly.peak_date || "") + " → " + (k.max_dd_monthly.trough_date || "") + "</span>", "—"],
+    ["Max DD (Yearly)", fmtUSD(k.max_dd_yearly.abs), fmtPct(k.max_dd_yearly.pct)],
+    ["&nbsp;&nbsp;· Period", (k.max_dd_yearly.period || "—") + "<br><span class='text-dim text-[10.5px]'>" +
+      (k.max_dd_yearly.peak_date || "") + " → " + (k.max_dd_yearly.trough_date || "") + "</span>", "—"],
+    ["Profit Factor", k.profit_factor ?? "—", "—"],
+    ["Expectancy (Per Trade)", fmtUSD(k.avg_trade), fmtPct(k.avg_trade / cap * 100, true)],
+    ["Best / Worst Trade", fmtUSD(k.best_trade) + " / " + fmtUSD(k.worst_trade), "—"],
+    ["Mode Switches", k.mode_switches, "—"],
+    ["Avg Trade Duration", k.avg_trade_duration || "—", "—"],
+    ["Gross Profit / Loss", fmtUSD(k.gross_profit) + " / " + fmtUSD(k.gross_loss), "—"],
+  ];
+  const pctCol = kmUnit === "pct";
+  $("km-body").innerHTML = `<table class="w-full">
+    <thead><tr class="text-dim text-[10.5px] uppercase tracking-wider">
+      <th class="text-left font-semibold pb-2">Metric</th>
+      <th class="text-right font-semibold pb-2">${pctCol ? "Instrument %" : "USD"}</th></tr></thead>
+    <tbody>` + rows.map(([m, u, pc]) => {
+      const main = pctCol ? pc : u;
+      const sub = pctCol ? `<span class="text-dim text-[10.5px]">${u}</span>` : (pc !== "—" ? `<span class="text-dim text-[10.5px]">${pc}</span>` : "");
+      const neg = /Max DD|Gross Loss/.test(m) && !u.startsWith("$0");
+      return `<tr class="border-t border-line/60">
+        <td class="py-[7px] text-mut">${m}</td>
+        <td class="py-[7px] text-right font-bold ${neg ? "text-red" : "text-gray-200"}">${main}
+          ${sub ? `<div class="font-normal">${sub}</div>` : ""}</td></tr>`;
+    }).join("") + "</tbody></table>";
+}
+
+renderEmpty();
+/* auto-compile once on first load so the dashboard is never empty */
+window.addEventListener("load", () => setTimeout(compile, 300));
+</script>
+</body>
+</html>
